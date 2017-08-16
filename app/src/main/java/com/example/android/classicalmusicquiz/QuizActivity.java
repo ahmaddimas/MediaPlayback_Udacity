@@ -25,18 +25,24 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
 
 import com.google.android.exoplayer2.DefaultLoadControl;
+import com.google.android.exoplayer2.ExoPlaybackException;
+import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.ExoPlayerFactory;
 import com.google.android.exoplayer2.LoadControl;
 import com.google.android.exoplayer2.SimpleExoPlayer;
+import com.google.android.exoplayer2.Timeline;
 import com.google.android.exoplayer2.extractor.DefaultExtractorsFactory;
 import com.google.android.exoplayer2.source.ExtractorMediaSource;
 import com.google.android.exoplayer2.source.MediaSource;
+import com.google.android.exoplayer2.source.TrackGroupArray;
 import com.google.android.exoplayer2.trackselection.DefaultTrackSelector;
+import com.google.android.exoplayer2.trackselection.TrackSelectionArray;
 import com.google.android.exoplayer2.trackselection.TrackSelector;
 import com.google.android.exoplayer2.ui.SimpleExoPlayerView;
 import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory;
@@ -44,10 +50,11 @@ import com.google.android.exoplayer2.util.Util;
 
 import java.util.ArrayList;
 
-public class QuizActivity extends AppCompatActivity implements View.OnClickListener {
+public class QuizActivity extends AppCompatActivity implements View.OnClickListener, ExoPlayer.EventListener {
 
     private static final int CORRECT_ANSWER_DELAY_MILLIS = 1000;
     private static final String REMAINING_SONGS_KEY = "remaining_songs";
+    private static final String TAG = QuizActivity.class.getSimpleName();
     private int[] mButtonIDs = {R.id.buttonA, R.id.buttonB, R.id.buttonC, R.id.buttonD};
     private ArrayList<Integer> mRemainingSampleIDs;
     private ArrayList<Integer> mQuestionSampleIDs;
@@ -64,8 +71,10 @@ public class QuizActivity extends AppCompatActivity implements View.OnClickListe
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_quiz);
 
-        // ImageView composerView = (ImageView) findViewById(R.id.composerView);
+
+        // Initialize the player view.
         mPlayerView = (SimpleExoPlayerView) findViewById(R.id.playerView);
+
 
         boolean isNewGame = !getIntent().hasExtra(REMAINING_SONGS_KEY);
 
@@ -87,7 +96,8 @@ public class QuizActivity extends AppCompatActivity implements View.OnClickListe
         mAnswerSampleID = QuizUtils.getCorrectAnswerID(mQuestionSampleIDs);
 
         // Load the question mark as the background image until the user answers the question.
-        mPlayerView.setDefaultArtwork(BitmapFactory.decodeResource(getResources(), R.drawable.question_mark));
+        mPlayerView.setDefaultArtwork(BitmapFactory.decodeResource
+                (getResources(), R.drawable.question_mark));
 
         // If there is only one answer left, end the game.
         if (mQuestionSampleIDs.size() < 2) {
@@ -99,14 +109,17 @@ public class QuizActivity extends AppCompatActivity implements View.OnClickListe
         mButtons = initializeButtons(mQuestionSampleIDs);
 
         Sample answerSample = Sample.getSampleByID(this, mAnswerSampleID);
+
         if (answerSample == null) {
-            Toast.makeText(this, getString(R.string.sample_not_found_error), Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, getString(R.string.sample_not_found_error),
+                    Toast.LENGTH_SHORT).show();
             return;
         }
 
         // Initialize the player.
         initializePlayer(Uri.parse(answerSample.getUri()));
     }
+
 
     /**
      * Initializes the button to the correct views, and sets the text to the composers names,
@@ -129,9 +142,9 @@ public class QuizActivity extends AppCompatActivity implements View.OnClickListe
         return buttons;
     }
 
+
     /**
      * Initialize ExoPlayer.
-     *
      * @param mediaUri The URI of the sample to play.
      */
     private void initializePlayer(Uri mediaUri) {
@@ -141,13 +154,19 @@ public class QuizActivity extends AppCompatActivity implements View.OnClickListe
             LoadControl loadControl = new DefaultLoadControl();
             mExoPlayer = ExoPlayerFactory.newSimpleInstance(this, trackSelector, loadControl);
             mPlayerView.setPlayer(mExoPlayer);
+
+            // Set the ExoPlayer.EventListener to this activity.
+            mExoPlayer.addListener(this);
+
             // Prepare the MediaSource.
             String userAgent = Util.getUserAgent(this, "ClassicalMusicQuiz");
-            MediaSource mediaSource = new ExtractorMediaSource(mediaUri, new DefaultDataSourceFactory(this, userAgent), new DefaultExtractorsFactory(), null, null);
+            MediaSource mediaSource = new ExtractorMediaSource(mediaUri, new DefaultDataSourceFactory(
+                    this, userAgent), new DefaultExtractorsFactory(), null, null);
             mExoPlayer.prepare(mediaSource);
             mExoPlayer.setPlayWhenReady(true);
         }
     }
+
 
     /**
      * Release ExoPlayer.
@@ -157,6 +176,7 @@ public class QuizActivity extends AppCompatActivity implements View.OnClickListe
         mExoPlayer.release();
         mExoPlayer = null;
     }
+
 
     /**
      * The OnClick method for all of the answer buttons. The method uses the index of the button
@@ -210,11 +230,11 @@ public class QuizActivity extends AppCompatActivity implements View.OnClickListe
                 startActivity(nextQuestionIntent);
             }
         }, CORRECT_ANSWER_DELAY_MILLIS);
-
     }
 
     /**
-     * Disables the buttons and changes the background colors and player art to show the correct answer.
+     * Disables the buttons and changes the background colors and player art to
+     * show the correct answer.
      */
     private void showCorrectAnswer() {
         mPlayerView.setDefaultArtwork(Sample.getComposerArtBySampleID(this, mAnswerSampleID));
@@ -233,10 +253,10 @@ public class QuizActivity extends AppCompatActivity implements View.OnClickListe
                                 (this, android.R.color.holo_red_light),
                         PorterDuff.Mode.MULTIPLY);
                 mButtons[i].setTextColor(Color.WHITE);
-
             }
         }
     }
+
 
     /**
      * Release the player when the activity is destroyed.
@@ -245,5 +265,37 @@ public class QuizActivity extends AppCompatActivity implements View.OnClickListe
     protected void onDestroy() {
         super.onDestroy();
         releasePlayer();
+    }
+
+
+    // ExoPlayer Event Listeners
+
+    @Override
+    public void onTimelineChanged(Timeline timeline, Object manifest) {
+    }
+
+    @Override
+    public void onTracksChanged(TrackGroupArray trackGroups, TrackSelectionArray trackSelections) {
+    }
+
+    @Override
+    public void onLoadingChanged(boolean isLoading) {
+    }
+
+    @Override
+    public void onPlayerStateChanged(boolean playWhenReady, int playbackState) {
+        if ((playbackState == ExoPlayer.STATE_READY) && playWhenReady) {
+            Log.d(TAG, "onPlayerStateChanged: PLAYING");
+        } else if ((playbackState == ExoPlayer.STATE_READY)) {
+            Log.d(TAG, "onPlayerStateChanged: PAUSED");
+        }
+    }
+
+    @Override
+    public void onPlayerError(ExoPlaybackException error) {
+    }
+
+    @Override
+    public void onPositionDiscontinuity() {
     }
 }
